@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EidosInsight</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <img src="../icons/icon32.png" alt="EidosInsight" class="logo" />
+        <span class="brand-name">EidosInsight</span>
+      </div>
+      <div class="conn-status" id="connStatus">
+        <span class="status-dot" id="statusDot"></span>
+        <span class="status-text" id="statusText">检查中...</span>
+      </div>
+    </header>
+
+    <!-- Not-a-paper notice -->
+    <div class="section notice" id="notPaperNotice" style="display:none">
+      <p class="notice-text">当前页面不像是学术论文。</p>
+      <p class="notice-hint">在 arXiv、ACM、IEEE 等学术页面使用效果最佳。</p>
+    </div>
+
+    <!-- Metadata preview card -->
+    <div class="section meta-card" id="metaCard" style="display:none">
+      <div class="meta-header">
+        <span class="source-badge" id="sourceBadge">–</span>
+        <button class="btn-icon" id="btnRefresh" title="重新提取">↺</button>
+      </div>
+
+      <div class="meta-field">
+        <label>标题</label>
+        <div class="meta-value editable" id="fieldTitle" contenteditable="true"></div>
+      </div>
+
+      <div class="meta-field">
+        <label>作者</label>
+        <div class="meta-value editable small" id="fieldAuthors" contenteditable="true"></div>
+      </div>
+
+      <div class="meta-field two-col">
+        <div>
+          <label>发布日期</label>
+          <div class="meta-value small" id="fieldDate"></div>
+        </div>
+        <div>
+          <label>DOI</label>
+          <div class="meta-value small" id="fieldDoi"></div>
+        </div>
+      </div>
+
+      <div class="meta-field" id="abstractField">
+        <label>摘要 <span class="toggle-abstract" id="toggleAbstract">展开</span></label>
+        <div class="meta-value abstract collapsed" id="fieldAbstract"></div>
+      </div>
+    </div>
+
+    <!-- Action area -->
+    <div class="section actions" id="actionsArea" style="display:none">
+      <button class="btn-primary" id="btnSave">
+        <span class="btn-icon-left">⬇</span>
+        <span id="btnSaveText">保存到 EidosInsight</span>
+      </button>
+    </div>
+
+    <!-- Success state -->
+    <div class="section success-card" id="successCard" style="display:none">
+      <div class="success-icon">✓</div>
+      <p class="success-title">已保存！</p>
+      <p class="success-hint" id="successHint"></p>
+      <button class="btn-secondary" id="btnOpenApp">在 EidosInsight 中查看</button>
+    </div>
+
+    <!-- Error state -->
+    <div class="section error-card" id="errorCard" style="display:none">
+      <p class="error-title">保存失败</p>
+      <p class="error-msg" id="errorMsg"></p>
+      <button class="btn-secondary" id="btnRetry">重试</button>
+    </div>
+
+    <!-- Disconnected notice -->
+    <div class="section disconn-card" id="disconnCard" style="display:none">
+      <p class="disconn-title">未连接到 EidosInsight</p>
+      <p class="disconn-hint">请确保 EidosInsight 桌面应用已启动，并已安装 Native Host。</p>
+      <button class="btn-secondary" id="btnInstallHost">安装连接组件</button>
+    </div>
+
+    <!-- Loading overlay -->
+    <div class="loading-overlay" id="loadingOverlay" style="display:none">
+      <div class="spinner"></div>
+      <p id="loadingText">正在保存...</p>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

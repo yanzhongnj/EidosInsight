@@ -1,0 +1,93 @@
+[package]
+name = "eidosinsight"
+version = "0.1.0"
+description = "EidosInsight - AI-driven personal research knowledge assistant"
+authors = ["EidosInsight Team"]
+edition = "2021"
+default-run = "eidosinsight"
+
+[lib]
+name = "eidosinsight_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+# Main Tauri application
+[[bin]]
+name = "eidosinsight"
+path = "src/main.rs"
+
+# Native Messaging Host — 独立可执行文件，由 Chrome 直接启动
+[[bin]]
+name = "eidosinsight-native-host"
+path = "src/bin/native_host.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# Tauri
+tauri = { version = "2", features = ["tray-icon", "devtools"] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-shell = "2"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Database
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Logging / Tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# UUID generation
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# PDF parsing
+lopdf = "0.34"
+
+# HTTP client (for DeepXiv / Semantic Scholar APIs)
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream", "blocking"], default-features = false }
+
+# OS keychain (v3 requires explicit platform feature; without it, uses mock store)
+keyring = { version = "3", features = ["windows-native"] }
+
+# Pattern matching / regex
+regex = "1"
+
+# Base64 encoding (for PDF transfer to frontend)
+base64 = "0.22"
+
+# Directory paths
+dirs = "6"
+
+# Lazy static
+once_cell = "1"
+
+# Async trait
+async-trait = "0.1"
+
+# Futures (Stream utilities)
+futures = "0.3"
+
+# Cron scheduling
+cron = "0.15"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
