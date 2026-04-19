@@ -41,14 +41,19 @@ impl FolderRepo {
                 sort_order: row.get(5)?,
                 date_created: row.get(6)?,
                 date_modified: row.get(7)?,
+                paper_count: 0, // not computed for single-folder queries
             }),
         ).map_err(|_| AppError::FolderNotFound { id: id.to_string() })
     }
 
     pub fn list(conn: &Connection) -> Result<Vec<Folder>> {
         let mut stmt = conn.prepare(
-            "SELECT id, name, parent_id, color, icon, sort_order, date_created, date_modified
-             FROM folders ORDER BY sort_order ASC"
+            "SELECT f.id, f.name, f.parent_id, f.color, f.icon, f.sort_order, f.date_created, f.date_modified,
+                    COUNT(p.id) as paper_count
+             FROM folders f
+             LEFT JOIN papers p ON p.folder_id = f.id
+             GROUP BY f.id
+             ORDER BY f.sort_order ASC"
         )?;
         let folders = stmt.query_map([], |row| {
             Ok(Folder {
@@ -60,6 +65,7 @@ impl FolderRepo {
                 sort_order: row.get(5)?,
                 date_created: row.get(6)?,
                 date_modified: row.get(7)?,
+                paper_count: row.get(8).unwrap_or(0),
             })
         })?.filter_map(|r| r.ok()).collect();
         Ok(folders)

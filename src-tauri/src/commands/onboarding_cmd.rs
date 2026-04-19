@@ -89,6 +89,7 @@ impl Default for CreatePaperInput {
             arxiv_id: None,
             pdf_url: None,
             pdf_path: None,
+            file_type: None,
             folder_id: None,
         }
     }

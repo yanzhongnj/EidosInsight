@@ -15,7 +15,15 @@ const dragOver = ref(false)
 
 const canImport = computed(() => !importing.value)
 
-async function handleImportPdf() {
+/** Supported file extensions for drag-and-drop validation */
+const SUPPORTED_EXTENSIONS = ['pdf', 'txt', 'docx', 'doc', 'xlsx', 'xls', 'csv', 'html', 'htm']
+
+function isSupportedFile(file: File): boolean {
+  const ext = file.name.split('.').pop()?.toLowerCase() || ''
+  return SUPPORTED_EXTENSIONS.includes(ext)
+}
+
+async function handleImportDocument() {
   if (!canImport.value) return
   importing.value = true
   importError.value = null
@@ -23,9 +31,9 @@ async function handleImportPdf() {
 
   try {
     if (importMode.value === 'batch') {
-      await paperStore.batchImportPdfs()
+      await paperStore.batchImportDocuments()
     } else {
-      await paperStore.importPdf()
+      await paperStore.importDocument()
     }
     importSuccess.value = true
     setTimeout(() => {
@@ -50,10 +58,10 @@ async function handleDrop(event: DragEvent) {
   try {
     // For each dropped file, import it
     for (const file of event.dataTransfer.files) {
-      if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+      if (isSupportedFile(file)) {
         // Tauri needs the file path, which we can get from the File object
         // But in web context we don't have the path - use the dialog-based import instead
-        await paperStore.importPdf()
+        await paperStore.importDocument()
         break // Use single import for drag-drop (opens dialog as fallback)
       }
     }
@@ -105,6 +113,11 @@ function handleDragLeave() {
           </button>
         </div>
 
+        <!-- Supported formats hint -->
+        <div class="format-hint">
+          支持格式：PDF、TXT、Word(docx)、Excel(xlsx)、CSV、HTML
+        </div>
+
         <!-- Drop zone -->
         <div
           class="drop-zone"
@@ -123,7 +136,7 @@ function handleDragLeave() {
           </div>
           <template v-else>
             <div class="drop-icon">📄</div>
-            <p class="drop-text">拖拽 PDF 文件到此处</p>
+            <p class="drop-text">拖拽文件到此处</p>
             <p class="drop-hint">或者点击下方按钮选择文件</p>
           </template>
         </div>
@@ -141,10 +154,10 @@ function handleDragLeave() {
           </button>
           <button
             class="btn btn-primary"
-            @click="handleImportPdf"
+            @click="handleImportDocument"
             :disabled="!canImport || importing"
           >
-            {{ importing ? '导入中...' : (importMode === 'batch' ? '选择多个文件' : '选择 PDF 文件') }}
+            {{ importing ? '导入中...' : (importMode === 'batch' ? '选择多个文件' : '选择文件') }}
           </button>
         </div>
       </div>
@@ -214,7 +227,7 @@ function handleDragLeave() {
   background: var(--bg-tertiary);
   border-radius: var(--radius-lg);
   padding: 4px;
-  margin-bottom: 20px;
+  margin-bottom: 12px;
 }
 
 .tab-btn {
@@ -233,6 +246,15 @@ function handleDragLeave() {
   background: var(--bg-primary);
   color: var(--text-primary);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.format-hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-bottom: 16px;
+  padding: 6px 10px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
 }
 
 .drop-zone {

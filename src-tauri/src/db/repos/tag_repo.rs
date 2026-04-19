@@ -102,4 +102,40 @@ impl TagRepo {
         conn.execute("DELETE FROM tags WHERE id = ?1", params![id])?;
         Ok(())
     }
+
+    pub fn update_color(conn: &Connection, id: &str, color: &str) -> Result<()> {
+        conn.execute("UPDATE tags SET color = ?1 WHERE id = ?2", params![color, id])?;
+        Ok(())
+    }
+
+    /// Suggest tags for a paper based on existing popular tags and paper content.
+    /// Returns tag names that are not yet applied to this paper.
+    pub fn suggest_tags(conn: &Connection, paper_id: &str) -> Result<Vec<String>> {
+        // Get existing tags for this paper
+        let existing: Vec<String> = {
+            let mut stmt = conn.prepare(
+                "SELECT t.name FROM tags t INNER JOIN paper_tags pt ON t.id = pt.tag_id WHERE pt.paper_id = ?1"
+            )?;
+            let rows: Vec<String> = stmt.query_map(params![paper_id], |row| row.get(0))?
+                .filter_map(|r| r.ok())
+                .collect();
+            rows
+        };
+
+        // Get top tags by usage that aren't already on this paper
+        let mut stmt = conn.prepare(
+            "SELECT name FROM tags WHERE usage_count > 0 ORDER BY usage_count DESC, name ASC LIMIT 20"
+        )?;
+        let all_popular: Vec<String> = stmt.query_map([], |row| row.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        let suggestions: Vec<String> = all_popular
+            .into_iter()
+            .filter(|name| !existing.contains(name))
+            .take(10)
+            .collect();
+
+        Ok(suggestions)
+    }
 }

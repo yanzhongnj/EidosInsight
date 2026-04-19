@@ -4,10 +4,76 @@ use crate::db::{DbState, SettingsRepo};
 use crate::errors::{AppError, Result};
 use crate::models::LlmConfig;
 use crate::services::llm::*;
-use crate::services::llm::openai_compat::{OpenAiCompatAdapter, OpenAiCompatConfig};
 use crate::services::LlmState;
 use futures::StreamExt;
 use tauri::{AppHandle, Emitter, State};
+
+/// Get all available provider presets
+#[tauri::command]
+pub fn get_llm_provider_presets() -> Vec<ProviderPreset> {
+    get_all_presets()
+}
+
+/// List currently configured providers (which adapters are active)
+#[tauri::command]
+pub async fn list_configured_providers(llm: State<'_, LlmState>) -> Result<Vec<ConfiguredProvider>> {
+    let router = &llm.0;
+    let mut providers = Vec::new();
+
+    // Always report Ollama
+    let ollama_available = router.is_ollama_available().await;
+    providers.push(ConfiguredProvider {
+        id: "ollama".to_string(),
+        name: "Ollama (本地)".to_string(),
+        is_available: ollama_available,
+        is_local: true,
+    });
+
+    // Check Anthropic
+    let anthropic = router.get_anthropic_adapter().await;
+    if let Some(adapter) = anthropic.as_ref() {
+        providers.push(ConfiguredProvider {
+            id: "anthropic".to_string(),
+            name: "Anthropic Claude".to_string(),
+            is_available: adapter.health_check().await,
+            is_local: false,
+        });
+    }
+    drop(anthropic);
+
+    // Check OpenAI-compat
+    let openai = router.get_openai_compat_adapter().await;
+    if let Some(adapter) = openai.as_ref() {
+        let preset = find_preset(adapter.provider_name());
+        providers.push(ConfiguredProvider {
+            id: adapter.provider_name().to_string(),
+            name: preset.map(|p| p.name.clone()).unwrap_or_else(|| adapter.provider_name().to_string()),
+            is_available: adapter.health_check().await,
+            is_local: false,
+        });
+    }
+
+    Ok(providers)
+}
+
+/// Switch the active provider (rebuilds the cloud adapter)
+#[tauri::command]
+pub async fn switch_active_provider(
+    provider: String,
+    db: State<'_, DbState>,
+    llm: State<'_, LlmState>,
+) -> Result<()> {
+    // Save provider to DB
+    {
+        let db_conn = db.0.lock().map_err(|e| AppError::Internal(e.to_string()))?;
+        SettingsRepo::set(db_conn.conn(), "llm_provider", &provider)?;
+    }
+
+    // Rebuild cloud adapter
+    rebuild_cloud_adapter(&provider, &llm).await?;
+
+    Ok(())
+}
 
 /// Detect local Ollama availability and list models
 #[tauri::command]
@@ -37,10 +103,12 @@ pub async fn get_llm_status(llm: State<'_, LlmState>) -> Result<LlmStatusResult>
     };
 
     let has_cloud = router.has_cloud_adapter().await;
+    let active_cloud = router.active_cloud_provider().await;
 
     Ok(LlmStatusResult {
         status: status_str.to_string(),
         has_cloud,
+        active_cloud_provider: active_cloud,
     })
 }
 
@@ -135,7 +203,7 @@ pub async fn save_api_key(
         .map_err(|e| AppError::Keyring(format!("Failed to save API key: {}", e)))?;
 
     // Update the cloud adapter in the router
-    update_cloud_adapter(&provider, &llm).await?;
+    rebuild_cloud_adapter(&provider, &llm).await?;
 
     tracing::info!(provider = %provider, "API key saved successfully to keyring");
     Ok(())
@@ -176,7 +244,11 @@ pub async fn configure_llm_provider(
 
     // Update cloud adapter if needed
     if config.provider != "ollama" {
-        update_cloud_adapter(&config.provider, &llm).await?;
+        rebuild_cloud_adapter(&config.provider, &llm).await?;
+    } else {
+        // Clear cloud adapters when switching to Ollama
+        llm.0.set_openai_compat_adapter(None).await;
+        llm.0.set_anthropic_adapter(None).await;
     }
 
     Ok(())
@@ -185,9 +257,10 @@ pub async fn configure_llm_provider(
 // --- Internal helpers ---
 
 /// Rebuild the cloud adapter from DB settings and keyring
-async fn update_cloud_adapter(provider: &str, llm: &LlmState) -> Result<()> {
+async fn rebuild_cloud_adapter(provider: &str, llm: &LlmState) -> Result<()> {
     if provider == "ollama" {
-        llm.0.set_cloud_adapter(None).await;
+        llm.0.set_openai_compat_adapter(None).await;
+        llm.0.set_anthropic_adapter(None).await;
         return Ok(());
     }
 
@@ -199,31 +272,16 @@ async fn update_cloud_adapter(provider: &str, llm: &LlmState) -> Result<()> {
     let api_key = match entry.get_password() {
         Ok(key) => key,
         Err(_) => {
-            // No API key stored yet — just clear the cloud adapter
-            llm.0.set_cloud_adapter(None).await;
+            // No API key stored yet — just clear the cloud adapters
+            llm.0.set_openai_compat_adapter(None).await;
+            llm.0.set_anthropic_adapter(None).await;
             return Ok(());
         }
     };
 
-    // Determine base URL and default model based on provider
-    let (base_url, default_model) = match provider {
-        "openai" => ("https://api.openai.com/v1".to_string(), "gpt-4o-mini".to_string()),
-        "claude" => ("https://api.anthropic.com/v1".to_string(), "claude-sonnet-4-20250514".to_string()),
-        "deepseek" => ("https://api.deepseek.com/v1".to_string(), "deepseek-chat".to_string()),
-        _ => ("https://api.openai.com/v1".to_string(), "gpt-4o-mini".to_string()),
-    };
+    // Use the router's set_cloud_adapter which routes to correct slot
+    llm.0.set_cloud_adapter(provider, &api_key, None).await?;
 
-    let cloud_adapter = OpenAiCompatAdapter::new(
-        OpenAiCompatConfig {
-            base_url,
-            api_key,
-            default_model,
-            provider_label: provider.to_string(),
-            timeout_secs: 15,
-        },
-    );
-
-    llm.0.set_cloud_adapter(Some(cloud_adapter)).await;
     Ok(())
 }
 
@@ -333,6 +391,16 @@ pub struct OllamaDetectionResult {
 pub struct LlmStatusResult {
     pub status: String,
     pub has_cloud: bool,
+    pub active_cloud_provider: Option<String>,
+}
+
+/// Configured provider info
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ConfiguredProvider {
+    pub id: String,
+    pub name: String,
+    pub is_available: bool,
+    pub is_local: bool,
 }
 
 /// Stream error payload

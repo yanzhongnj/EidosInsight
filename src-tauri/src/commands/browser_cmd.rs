@@ -91,6 +91,7 @@ pub fn import_from_browser(
         volume: None,
         issue: None,
         pages: None,
+        file_type: None,
         folder_id: None,
     };
 

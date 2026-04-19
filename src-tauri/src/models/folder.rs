@@ -12,6 +12,9 @@ pub struct Folder {
     pub sort_order: i32,
     pub date_created: String,
     pub date_modified: String,
+    /// Number of papers in this folder (computed via LEFT JOIN)
+    #[serde(default)]
+    pub paper_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

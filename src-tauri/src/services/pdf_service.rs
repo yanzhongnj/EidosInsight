@@ -124,15 +124,34 @@ fn get_metadata_string(doc: &Document, key: &'static [u8]) -> Option<String> {
     None
 }
 
-/// Convert a PDF object to a String
+/// Convert a PDF object to a String, with smart encoding detection
 fn object_to_string(obj: &lopdf::Object) -> Option<String> {
     match obj {
         lopdf::Object::String(bytes, _) => {
-            // Try UTF-8 first, then lossy conversion
-            match String::from_utf8(bytes.clone()) {
-                Ok(s) => Some(s),
-                Err(_) => Some(String::from_utf8_lossy(bytes).into_owned()),
+            // 1. PDF standard: UTF-16BE strings start with BOM 0xFE 0xFF
+            if bytes.len() >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF {
+                // Decode as UTF-16BE (skip the 2-byte BOM)
+                let utf16_units: Vec<u16> = bytes[2..]
+                    .chunks_exact(2)
+                    .map(|c| u16::from_be_bytes([c[0], c[1]]))
+                    .collect();
+                if let Ok(s) = String::from_utf16(&utf16_units) {
+                    return Some(s.trim().to_string()).filter(|s| !s.is_empty());
+                }
             }
+
+            // 2. Try UTF-8 (covers ASCII and valid UTF-8 encoded strings)
+            if let Ok(s) = String::from_utf8(bytes.clone()) {
+                return Some(s);
+            }
+
+            // 3. Try to detect and decode CJK legacy encodings (GBK, Big5, Shift_JIS, EUC-KR)
+            if let Some(decoded) = try_decode_cjk(bytes) {
+                return Some(decoded);
+            }
+
+            // 4. Final fallback: lossy UTF-8 conversion
+            Some(String::from_utf8_lossy(bytes).into_owned())
         }
         lopdf::Object::Name(bytes) => {
             String::from_utf8(bytes.clone()).ok()
@@ -141,6 +160,54 @@ fn object_to_string(obj: &lopdf::Object) -> Option<String> {
     }
     .map(|s| s.trim().to_string())
     .filter(|s| !s.is_empty())
+}
+
+/// Try to decode bytes as CJK encoding (GBK, Big5, Shift_JIS, EUC-KR).
+/// Uses heuristic: if the decoded string contains valid CJK characters and
+/// few replacement characters, accept it.
+fn try_decode_cjk(bytes: &[u8]) -> Option<String> {
+    // Skip very short strings — not enough data for reliable detection
+    if bytes.len() < 2 {
+        return None;
+    }
+
+    // Try encodings in order of likelihood for Chinese academic PDFs
+    let encodings = [
+        encoding_rs::GBK,       // Most common for mainland China PDFs
+        encoding_rs::BIG5,      // Traditional Chinese (Taiwan/HK)
+        encoding_rs::SHIFT_JIS, // Japanese
+        encoding_rs::EUC_KR,    // Korean
+    ];
+
+    for encoding in encodings {
+        let (decoded, _encoding_used, had_errors) = encoding.decode(bytes);
+
+        if had_errors {
+            continue;
+        }
+
+        let text = decoded.into_owned();
+
+        // Heuristic: check if the decoded text contains CJK characters
+        // and has low ratio of replacement characters
+        let cjk_count = text.chars().filter(|c| {
+            // CJK Unified Ideographs: U+4E00..U+9FFF
+            // CJK Compatibility: U+F900..U+FAFF
+            // CJK Extension A: U+3400..U+4DBF
+            ('\u{4E00}'..='\u{9FFF}').contains(c)
+                || ('\u{F900}'..='\u{FAFF}').contains(c)
+                || ('\u{3400}'..='\u{4DBF}').contains(c)
+        }).count();
+
+        let replacement_count = text.chars().filter(|c| *c == '\u{FFFD}').count();
+
+        // Accept if we have CJK characters and very few or no replacements
+        if cjk_count > 0 && replacement_count == 0 {
+            return Some(text);
+        }
+    }
+
+    None
 }
 
 fn extract_doi(doc: &Document) -> Option<String> {

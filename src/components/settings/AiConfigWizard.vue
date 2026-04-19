@@ -45,10 +45,16 @@ interface ProviderMeta {
 }
 
 const providers: Record<string, ProviderMeta> = {
-  ollama:   { label: 'Ollama (本地)',   icon: '🏠', color: '#10b981', defaultModel: 'llama3',                         defaultUrl: 'http://localhost:11434' },
-  openai:   { label: 'OpenAI',          icon: '☁️', color: '#6366f1', defaultModel: 'gpt-4o-mini',                    defaultUrl: 'https://api.openai.com/v1' },
-  deepseek: { label: 'DeepSeek',        icon: '🌊', color: '#3b82f6', defaultModel: 'deepseek-chat',                  defaultUrl: 'https://api.deepseek.com/v1' },
-  claude:   { label: 'Claude',          icon: '🎭', color: '#8b5cf6', defaultModel: 'claude-sonnet-4-20250514',        defaultUrl: 'https://api.anthropic.com/v1' },
+  ollama:      { label: 'Ollama (本地)',    icon: '🏠', color: '#10b981', defaultModel: 'llama3',                         defaultUrl: 'http://localhost:11434' },
+  openai:      { label: 'OpenAI',           icon: '☁️', color: '#6366f1', defaultModel: 'gpt-4o-mini',                    defaultUrl: 'https://api.openai.com/v1' },
+  deepseek:    { label: 'DeepSeek',         icon: '🌊', color: '#3b82f6', defaultModel: 'deepseek-chat',                  defaultUrl: 'https://api.deepseek.com/v1' },
+  anthropic:   { label: 'Claude',           icon: '🟠', color: '#8b5cf6', defaultModel: 'claude-sonnet-4-20250514',        defaultUrl: 'https://api.anthropic.com' },
+  qwen:        { label: '通义千问',          icon: '🔷', color: '#6366f1', defaultModel: 'qwen-plus',                      defaultUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
+  zhipu:       { label: '智谱GLM',          icon: '🟣', color: '#8b5cf6', defaultModel: 'glm-4-flash',                    defaultUrl: 'https://open.bigmodel.cn/api/paas/v4' },
+  moonshot:    { label: 'Moonshot Kimi',    icon: '🌙', color: '#f59e0b', defaultModel: 'moonshot-v1-8k',                 defaultUrl: 'https://api.moonshot.cn/v1' },
+  siliconflow: { label: 'SiliconFlow',      icon: '💎', color: '#06b6d4', defaultModel: 'deepseek-ai/DeepSeek-V3',        defaultUrl: 'https://api.siliconflow.cn/v1' },
+  gemini:      { label: 'Gemini',           icon: '✨', color: '#10b981', defaultModel: 'gemini-2.0-flash',               defaultUrl: 'https://generativelanguage.googleapis.com/v1beta/openai' },
+  custom:      { label: '自定义端点',        icon: '🔧', color: '#9ca3af', defaultModel: '',                               defaultUrl: '' },
 }
 
 const currentProvider = computed(() => providers[llmConfig.value.provider] || providers.ollama)
@@ -321,6 +327,12 @@ startWizard()
       <div v-if="llmConfig.provider === 'ollama'" class="field-section">
         <label class="field-label">Ollama 地址</label>
         <input v-model="llmConfig.api_base_url" class="input" placeholder="http://localhost:11434" />
+      </div>
+
+      <!-- Custom endpoint URL -->
+      <div v-if="llmConfig.provider === 'custom'" class="field-section">
+        <label class="field-label">API 地址</label>
+        <input v-model="llmConfig.api_base_url" class="input" placeholder="https://your-api-endpoint/v1" />
       </div>
 
       <!-- Model selection -->
@@ -627,7 +639,7 @@ startWizard()
 
 .cloud-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
   gap: 8px;
   margin-bottom: 20px;
 }

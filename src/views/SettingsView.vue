@@ -3,7 +3,9 @@ import { ref, onMounted, watch } from 'vue'
 import { useAppStore } from '../stores/app'
 import { useTauriCommand } from '../composables/useTauriCommand'
 import AiConfigWizard from '../components/settings/AiConfigWizard.vue'
-import type { AppSettings, LlmConfig, LlmModelInfo, WizardDemoResult } from '../types'
+import LlmProviderGrid from '../components/settings/LlmProviderGrid.vue'
+import UpdateChecker from '../components/settings/UpdateChecker.vue'
+import type { AppSettings, LlmConfig, LlmModelInfo, WizardDemoResult, ProviderPreset, ConfiguredProvider } from '../types'
 
 const appStore = useAppStore()
 const cmd = useTauriCommand()
@@ -15,14 +17,16 @@ const saving = ref(false)
 // LLM enhanced state
 const llmModels = ref<LlmModelInfo[]>([])
 const loadingModels = ref(false)
-const apiKeyInput = ref('')
-const showApiKey = ref(false)
-const savingApiKey = ref(false)
 const ollamaDetected = ref(false)
 const detectingOllama = ref(false)
 
 // Wizard mode
 const showWizard = ref(false)
+
+// Provider grid state
+const providerPresets = ref<ProviderPreset[]>([])
+const configuredProviders = ref<ConfiguredProvider[]>([])
+const selectedProviderId = ref<string>('ollama')
 
 // Quick demo
 const runningQuickDemo = ref(false)
@@ -35,18 +39,61 @@ const connectionResult = ref<boolean | null>(null)
 onMounted(async () => {
   settings.value = { ...appStore.settings }
   llmConfig.value = { ...appStore.llmConfig }
+  selectedProviderId.value = llmConfig.value.provider || 'ollama'
   await detectOllama()
   await loadModels()
+  await loadProviderPresets()
+  await loadConfiguredProviders()
 })
 
 watch(() => llmConfig.value.provider, (newProvider) => {
   llmConfig.value.is_local = newProvider === 'ollama'
-  apiKeyInput.value = ''
   connectionResult.value = null
   loadModels()
 })
 
 // ── Ollama ────────────────────────────────────────────────────────────────────
+
+async function loadProviderPresets() {
+  try {
+    providerPresets.value = await cmd.getLlmProviderPresets()
+  } catch {
+    providerPresets.value = []
+  }
+}
+
+async function loadConfiguredProviders() {
+  try {
+    configuredProviders.value = await cmd.listConfiguredProviders()
+  } catch {
+    configuredProviders.value = []
+  }
+}
+
+// When user switches provider via LlmProviderGrid
+function onProviderSwitched(providerId: string) {
+  selectedProviderId.value = providerId
+  llmConfig.value.provider = providerId
+  llmConfig.value.is_local = providerId === 'ollama'
+  const preset = providerPresets.value.find(p => p.id === providerId)
+  if (preset) {
+    llmConfig.value.api_base_url = preset.base_url
+    if (!llmConfig.value.model_name || llmConfig.value.model_name === preset.default_model) {
+      llmConfig.value.model_name = preset.default_model
+    }
+  }
+  connectionResult.value = null
+  loadModels()
+  loadConfiguredProviders()
+  // Auto-save the active provider switch
+  cmd.switchActiveProvider(providerId).catch(e => console.error('Switch provider failed:', e))
+}
+
+// When API key is saved or removed via LlmProviderGrid
+function onProviderConfigChanged() {
+  loadConfiguredProviders()
+  appStore.refreshLlmStatus()
+}
 
 async function detectOllama() {
   detectingOllama.value = true
@@ -95,32 +142,6 @@ async function saveLlmConfig() {
     await appStore.refreshLlmStatus()
   } catch (error) {
     console.error('Failed to save LLM config:', error)
-  }
-}
-
-async function saveApiKey() {
-  if (!apiKeyInput.value.trim()) return
-  savingApiKey.value = true
-  try {
-    await cmd.saveApiKey(llmConfig.value.provider, apiKeyInput.value.trim())
-    llmConfig.value.api_key_set = true
-    apiKeyInput.value = ''
-    await appStore.refreshLlmStatus()
-    await loadModels()
-  } catch (error) {
-    console.error('Failed to save API key:', error)
-  } finally {
-    savingApiKey.value = false
-  }
-}
-
-async function removeApiKey() {
-  try {
-    await cmd.removeApiKey(llmConfig.value.provider)
-    llmConfig.value.api_key_set = false
-    await appStore.refreshLlmStatus()
-  } catch (error) {
-    console.error('Failed to remove API key:', error)
   }
 }
 
@@ -263,16 +284,11 @@ async function quitApp() {
         <span v-if="llmConfig.model_name" class="status-model">{{ llmConfig.model_name }}</span>
       </div>
 
-      <!-- Provider selection -->
-      <div class="setting-item">
-        <label>LLM 服务商</label>
-        <select v-model="llmConfig.provider" class="input">
-          <option value="ollama">Ollama (本地)</option>
-          <option value="openai">OpenAI</option>
-          <option value="claude">Claude</option>
-          <option value="deepseek">DeepSeek</option>
-        </select>
-      </div>
+      <!-- Provider Grid -->
+      <LlmProviderGrid
+        @switch="onProviderSwitched"
+        @config-changed="onProviderConfigChanged"
+      />
 
       <!-- Ollama detection -->
       <div v-if="llmConfig.provider === 'ollama'" class="ollama-detection">
@@ -285,30 +301,16 @@ async function quitApp() {
         <button class="btn btn-ghost btn-sm" @click="detectOllama">重新检测</button>
       </div>
 
-      <!-- API Key for cloud providers -->
-      <div v-if="llmConfig.provider !== 'ollama'" class="api-key-section">
-        <div class="setting-item">
-          <label>API Key</label>
-          <div class="api-key-input-group">
-            <input
-              v-model="apiKeyInput"
-              :type="showApiKey ? 'text' : 'password'"
-              class="input"
-              :placeholder="llmConfig.api_key_set ? '已保存（留空保持不变）' : '输入 API Key'"
-            />
-            <button class="btn btn-ghost btn-sm" @click="showApiKey = !showApiKey">
-              {{ showApiKey ? '隐藏' : '显示' }}
-            </button>
-          </div>
-        </div>
-        <div class="api-key-actions">
-          <button class="btn btn-primary btn-sm" @click="saveApiKey" :disabled="savingApiKey || !apiKeyInput.trim()">
-            {{ savingApiKey ? '保存中...' : '保存 Key' }}
-          </button>
-          <button v-if="llmConfig.api_key_set" class="btn btn-danger btn-sm" @click="removeApiKey">
-            删除 Key
-          </button>
-        </div>
+      <!-- Ollama base URL -->
+      <div v-if="llmConfig.provider === 'ollama'" class="setting-item">
+        <label>Ollama 地址</label>
+        <input v-model="llmConfig.api_base_url" class="input" placeholder="http://localhost:11434" />
+      </div>
+
+      <!-- Custom endpoint URL -->
+      <div v-if="llmConfig.provider === 'custom'" class="setting-item">
+        <label>API 地址</label>
+        <input v-model="llmConfig.api_base_url" class="input" placeholder="https://your-api-endpoint/v1" />
       </div>
 
       <!-- Model selection -->
@@ -331,12 +333,6 @@ async function quitApp() {
       <div class="setting-item manual-model-row">
         <label></label>
         <input v-model="llmConfig.model_name" class="input input-sm" placeholder="或手动输入模型名称" />
-      </div>
-
-      <!-- Ollama base URL -->
-      <div v-if="llmConfig.provider === 'ollama'" class="setting-item">
-        <label>Ollama 地址</label>
-        <input v-model="llmConfig.api_base_url" class="input" placeholder="http://localhost:11434" />
       </div>
 
       <!-- Advanced settings -->
@@ -394,6 +390,7 @@ async function quitApp() {
       <h2>关于</h2>
       <p>EidosInsight v0.1.0</p>
       <p class="text-muted">AI 驱动的个人科研知识助手</p>
+      <UpdateChecker />
     </section>
 
     <!-- Exit -->
@@ -526,28 +523,6 @@ async function quitApp() {
   align-items: center;
   gap: 8px;
   font-size: 14px;
-}
-
-.api-key-section {
-  margin-bottom: 12px;
-}
-
-.api-key-input-group {
-  display: flex;
-  gap: 8px;
-  flex: 1;
-  max-width: 300px;
-}
-
-.api-key-input-group .input {
-  flex: 1;
-}
-
-.api-key-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-  padding-left: 136px;
 }
 
 .model-select-group {

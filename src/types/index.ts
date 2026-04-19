@@ -14,7 +14,10 @@ export interface Paper {
   doi: string | null
   arxiv_id: string | null
   pdf_url: string | null
+  /** Path to the stored document file (relative to papers_dir). Legacy field name. */
   pdf_path: string | null
+  /** Document file type: 'pdf' | 'txt' | 'docx' | 'xlsx' | 'csv' | 'html'. NULL for legacy records defaults to 'pdf'. */
+  file_type: string | null
   folder_id: string | null
   tldr: string | null
   reading_status: 'unread' | 'reading' | 'read'
@@ -37,6 +40,7 @@ export interface CreatePaperInput {
   arxiv_id?: string | null
   pdf_url?: string | null
   pdf_path?: string | null
+  file_type?: string | null
   folder_id?: string | null
 }
 
@@ -87,6 +91,7 @@ export interface Folder {
   sort_order: number
   date_created: string
   date_modified: string
+  paper_count: number
 }
 
 export interface CreateFolderInput {
@@ -303,6 +308,28 @@ export interface OllamaDetectionResult {
 export interface LlmStatusResult {
   status: 'local_available' | 'cloud_available' | 'unavailable'
   has_cloud: boolean
+  active_cloud_provider: string | null
+}
+
+// ── LLM Provider Preset types ───────────────────────────────────────────────
+
+export interface ProviderPreset {
+  id: string
+  name: string
+  adapter_type: string
+  base_url: string
+  default_model: string
+  requires_api_key: boolean
+  is_local: boolean
+  available_models: string[]
+  description: string
+}
+
+export interface ConfiguredProvider {
+  id: string
+  name: string
+  is_available: boolean
+  is_local: boolean
 }
 
 // Browser extension types
@@ -460,4 +487,168 @@ export interface PresetConfigField {
   required: boolean
   default_value: string | null
   options: string[] | null
+}
+
+// ── Crawl / Watch directory types ────────────────────────────────────────────
+
+export interface WatchDir {
+  id: string
+  path: string
+  is_enabled: boolean
+  file_filter: string | null
+  folder_id: string | null
+  recursive: boolean
+  scan_interval_min: number
+  last_scan: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateWatchDirInput {
+  path: string
+  is_enabled?: boolean | null
+  file_filter?: string | null
+  folder_id?: string | null
+  recursive?: boolean | null
+  scan_interval_min?: number | null
+}
+
+export interface UpdateWatchDirInput {
+  id: string
+  path?: string | null
+  is_enabled?: boolean | null
+  file_filter?: string | null
+  folder_id?: string | null
+  recursive?: boolean | null
+  scan_interval_min?: number | null
+}
+
+export interface CrawlScanResult {
+  new_files: number
+  modified_files: number
+  imported: number
+  failed: number
+  total_scanned: number
+  errors: string[]
+}
+
+// ── Collection types ─────────────────────────────────────────────────────────
+
+export interface Collection {
+  id: string
+  name: string
+  description: string | null
+  color: string | null
+  icon: string | null
+  sort_order: number
+  created_at: string
+  updated_at: string
+  paper_count?: number | null
+}
+
+export interface CreateCollectionInput {
+  name: string
+  description?: string | null
+  color?: string | null
+  icon?: string | null
+}
+
+export interface UpdateCollectionInput {
+  id: string
+  name?: string | null
+  description?: string | null
+  color?: string | null
+  icon?: string | null
+  sort_order?: number | null
+}
+
+// ── AI Result types ──────────────────────────────────────────────────────────
+
+export interface AiResult {
+  id: string
+  /** "review" | "comparison" | "baseline" */
+  result_type: 'review' | 'comparison' | 'baseline'
+  collection_id: string | null
+  title: string
+  /** Markdown output */
+  content: string
+  /** JSON for frontend table rendering (baseline) */
+  structured_data: string | null
+  /** e.g. "llama3", "gpt-4o" */
+  model_used: string | null
+  /** JSON array of paper IDs */
+  paper_ids: string
+  /** JSON array of comparison dimensions */
+  dimensions: string | null
+  created_at: string
+}
+
+export interface GenerateReviewInput {
+  collection_id: string
+  focus?: string | null
+}
+
+export interface GenerateComparisonInput {
+  collection_id: string
+  dimensions?: string[] | null
+}
+
+export interface GenerateBaselineInput {
+  collection_id: string
+  metric?: string | null
+}
+
+// ── Auto-update types ────────────────────────────────────────────────────────
+
+export interface UpdateInfo {
+  version: string
+  date: string
+  body: string
+}
+
+export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error'
+
+export interface UpdateProgress {
+  downloaded: number
+  total: number | null
+}
+
+// ── Update check result (from GitHub Releases API) ───────────────────────────
+
+export interface UpdateCheckResult {
+  has_update: boolean
+  current_version: string
+  latest_version: string
+  published_at: string | null
+  release_notes: string | null
+  download_url: string | null
+  html_url: string | null
+}
+
+// ── Library Stats types ─────────────────────────────────────────────────────
+
+export interface LibraryStats {
+  total_papers: number
+  unread_count: number
+  reading_count: number
+  read_count: number
+  favorite_count: number
+  folder_count: number
+  tag_count: number
+  note_count: number
+  collection_count: number
+  recent_papers_count: number
+  monthly_papers_count: number
+  file_type_distribution: FileTypeCount[]
+  top_tags: TagCountInfo[]
+}
+
+export interface FileTypeCount {
+  file_type: string
+  count: number
+}
+
+export interface TagCountInfo {
+  name: string
+  count: number
 }

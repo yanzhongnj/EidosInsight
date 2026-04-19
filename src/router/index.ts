@@ -8,6 +8,18 @@ const routes: RouteRecordRaw[] = [
     children: [
       {
         path: '',
+        name: 'dashboard',
+        component: () => import('../views/DashboardView.vue'),
+        meta: { title: '首页' },
+      },
+      {
+        path: 'hot-track',
+        name: 'hot-track',
+        component: () => import('../views/HotTrackView.vue'),
+        meta: { title: '热点跟踪' },
+      },
+      {
+        path: 'library',
         name: 'library',
         component: () => import('../views/LibraryView.vue'),
         meta: { title: '文献库' },
@@ -47,6 +59,24 @@ const routes: RouteRecordRaw[] = [
         name: 'automation',
         component: () => import('../views/AutomationView.vue'),
         meta: { title: '自动化' },
+      },
+      {
+        path: 'collections',
+        name: 'collections',
+        component: () => import('../views/CollectionListView.vue'),
+        meta: { title: '论文集' },
+      },
+      {
+        path: 'collection/:id',
+        name: 'collection',
+        component: () => import('../views/CollectionView.vue'),
+        meta: { title: '论文集' },
+      },
+      {
+        path: 'ai-result/:id',
+        name: 'ai-result',
+        component: () => import('../views/AiResultView.vue'),
+        meta: { title: 'AI 分析结果' },
       },
     ],
   },

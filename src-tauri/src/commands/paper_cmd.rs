@@ -18,43 +18,47 @@ pub fn import_paper(input: CreatePaperInput, db: State<'_, DbState>) -> Result<P
 }
 
 /// Import a PDF file - opens file dialog, copies PDF to papers dir,
-/// extracts metadata, and creates a paper record
+/// extracts metadata, and creates a paper record.
+/// NOTE: Kept for backward compatibility. Prefer import_document for multi-format support.
 #[tauri::command]
 pub async fn import_pdf(
     app: tauri::AppHandle,
+    folder_id: Option<String>,
     db: State<'_, DbState>,
     app_state: State<'_, AppState>,
 ) -> Result<Paper> {
-    // Open file dialog for PDF selection using the Dialog plugin
-    let dialog = app.dialog();
-    let file_paths = dialog
-        .file()
-        .set_title("选择 PDF 文件")
-        .add_filter("PDF 文件", &["pdf"])
-        .add_filter("所有文件", &["*"])
-        .blocking_pick_files();
+    // Open file dialog for PDF selection using the Dialog plugin (non-blocking)
+    let file_path = tauri::async_runtime::spawn_blocking(move || {
+        let dialog = app.dialog();
+        let file_paths = dialog
+            .file()
+            .set_title("选择 PDF 文件")
+            .add_filter("PDF 文件", &["pdf"])
+            .add_filter("所有文件", &["*"])
+            .blocking_pick_files();
 
-    let paths = file_paths.ok_or_else(|| AppError::InvalidInput("未选择文件".to_string()))?;
+        file_paths
+            .and_then(|paths| {
+                if paths.is_empty() { None } else { Some(paths[0].clone()) }
+            })
+            .and_then(|p| p.as_path().map(|pp| pp.to_path_buf()))
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("Dialog error: {}", e)))?
+    .ok_or_else(|| AppError::InvalidInput("未选择文件".to_string()))?;
 
-    if paths.is_empty() {
-        return Err(AppError::InvalidInput("未选择文件".to_string()));
-    }
-
-    // Process the first selected file
-    let source_path = paths[0].as_path()
-        .ok_or_else(|| AppError::InvalidInput("无效的文件路径".to_string()))?;
-
-    do_import_pdf(source_path.to_path_buf(), &db, &app_state)
+    do_import_pdf(file_path, &db, &app_state, folder_id)
 }
 
 /// Import a PDF from a specific file path (used by drag-and-drop)
 #[tauri::command]
 pub async fn import_pdf_from_path(
     source_path: PathBuf,
+    folder_id: Option<String>,
     db: State<'_, DbState>,
     app_state: State<'_, AppState>,
 ) -> Result<Paper> {
-    do_import_pdf(source_path, &db, &app_state)
+    do_import_pdf(source_path, &db, &app_state, folder_id)
 }
 
 /// Core PDF import logic shared by both entry points
@@ -62,8 +66,9 @@ fn do_import_pdf(
     source_path: PathBuf,
     db: &State<'_, DbState>,
     app_state: &State<'_, AppState>,
+    folder_id: Option<String>,
 ) -> Result<Paper> {
-    // Validate the file exists and is a PDF
+    // Validate the file exists
     if !source_path.exists() {
         return Err(AppError::InvalidInput(format!(
             "文件不存在: {}", source_path.display()
@@ -139,7 +144,8 @@ fn do_import_pdf(
         arxiv_id: None,
         pdf_url: None,
         pdf_path: Some(stored_name),
-        folder_id: None,
+        file_type: Some("pdf".to_string()),
+        folder_id,
     };
 
     let db = db.0.lock().map_err(|e| AppError::Internal(e.to_string()))?;
@@ -155,32 +161,38 @@ fn do_import_pdf(
     Ok(paper)
 }
 
-/// Batch import multiple PDF files
+/// Batch import multiple PDF files (non-blocking)
 #[tauri::command]
 pub async fn batch_import_pdfs(
     app: tauri::AppHandle,
+    folder_id: Option<String>,
     db: State<'_, DbState>,
     app_state: State<'_, AppState>,
 ) -> Result<Vec<Paper>> {
-    let dialog = app.dialog();
-    let file_paths = dialog
-        .file()
-        .set_title("选择 PDF 文件（可多选）")
-        .add_filter("PDF 文件", &["pdf"])
-        .blocking_pick_files();
+    let paths = tauri::async_runtime::spawn_blocking(move || {
+        let dialog = app.dialog();
+        let file_paths = dialog
+            .file()
+            .set_title("选择 PDF 文件（可多选）")
+            .add_filter("PDF 文件", &["pdf"])
+            .blocking_pick_files();
 
-    let paths = file_paths.ok_or_else(|| AppError::InvalidInput("未选择文件".to_string()))?;
+        file_paths
+            .map(|paths| {
+                paths.into_iter()
+                    .filter_map(|p| p.as_path().map(|pp| pp.to_path_buf()))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("Dialog error: {}", e)))?;
 
     let mut results = Vec::new();
     let mut errors = Vec::new();
 
-    for path in paths {
-        let source_path = match path.as_path() {
-            Some(p) => p.to_path_buf(),
-            None => continue,
-        };
-
-        match do_import_pdf(source_path, &db, &app_state) {
+    for source_path in paths {
+        match do_import_pdf(source_path, &db, &app_state, folder_id.clone()) {
             Ok(paper) => results.push(paper),
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to import PDF");
@@ -249,11 +261,40 @@ pub fn delete_paper(id: String, db: State<'_, DbState>, app_state: State<'_, App
 #[tauri::command]
 pub fn move_paper_to_folder(paper_id: String, folder_id: Option<String>, db: State<'_, DbState>) -> Result<Paper> {
     let db = db.0.lock().map_err(|e| crate::errors::AppError::Internal(e.to_string()))?;
-    PaperRepo::update(db.conn(), &UpdatePaperInput {
-        id: paper_id,
-        folder_id,
-        ..Default::default()
-    })
+    // Directly set folder_id (including NULL when folder_id is None) —
+    // PaperRepo::update skips None fields, so we handle this specially.
+    let now = chrono::Utc::now().naive_utc().format("%Y-%m-%d %H:%M:%S").to_string();
+    if let Some(ref fid) = folder_id {
+        db.conn().execute(
+            "UPDATE papers SET folder_id = ?1, date_modified = ?2 WHERE id = ?3",
+            rusqlite::params![fid, now, paper_id],
+        )?;
+    } else {
+        db.conn().execute(
+            "UPDATE papers SET folder_id = NULL, date_modified = ?1 WHERE id = ?2",
+            rusqlite::params![now, paper_id],
+        )?;
+    }
+    PaperRepo::get_by_id(db.conn(), &paper_id)
+}
+
+/// Get tags for a specific paper
+#[tauri::command]
+pub fn get_tags_for_paper(paper_id: String, db: State<'_, DbState>) -> Result<Vec<Tag>> {
+    let db = db.0.lock().map_err(|e| crate::errors::AppError::Internal(e.to_string()))?;
+    crate::db::TagRepo::get_tags_for_paper(db.conn(), &paper_id)
+}
+
+/// Batch get tags for multiple papers — returns a map of paper_id → Vec<Tag>
+#[tauri::command]
+pub fn batch_get_paper_tags(paper_ids: Vec<String>, db: State<'_, DbState>) -> Result<std::collections::HashMap<String, Vec<Tag>>> {
+    let db = db.0.lock().map_err(|e| crate::errors::AppError::Internal(e.to_string()))?;
+    let mut result = std::collections::HashMap::new();
+    for paper_id in paper_ids {
+        let tags = crate::db::TagRepo::get_tags_for_paper(db.conn(), &paper_id).unwrap_or_default();
+        result.insert(paper_id, tags);
+    }
+    Ok(result)
 }
 
 #[tauri::command]

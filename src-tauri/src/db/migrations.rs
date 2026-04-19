@@ -54,6 +54,9 @@ fn get_migrations() -> Vec<(&'static str, &'static str)> {
         ("011_insert_default_settings", M011_DEFAULT_SETTINGS),
         ("012_create_note_links_and_notes_fts", M012_NOTE_LINKS_AND_NOTES_FTS),
         ("013_create_auto_tasks_and_skills", M013_AUTO_TASKS_AND_SKILLS),
+        ("014_add_file_type_and_crawl_tables", M014_FILE_TYPE_AND_CRAWL),
+        ("015_create_collections_and_ai_results", M015_COLLECTIONS_AND_AI_RESULTS),
+        ("016_remove_default_folders", M016_REMOVE_DEFAULT_FOLDERS),
     ]
 }
 
@@ -221,13 +224,6 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('export_format', 'bibtex'),
     ('first_launch', 'true'),
     ('onboarding_completed', 'false');
-
--- Create default folders
-INSERT OR IGNORE INTO folders (id, name, parent_id, color, icon, sort_order) VALUES
-    ('all', '所有文献', NULL, '#6366f1', 'library', 0),
-    ('favorites', '收藏', NULL, '#f59e0b', 'star', 1),
-    ('unread', '未读', NULL, '#8b5cf6', 'eye-off', 2),
-    ('recently-added', '最近添加', NULL, '#10b981', 'clock', 3);
 "#;
 
 static M012_NOTE_LINKS_AND_NOTES_FTS: &str = r#"
@@ -379,4 +375,103 @@ VALUES
   ('skill-trending-weekly', '每周热点追踪',
    '---\nname: "每周热点追踪"\nversion: "1.0.0"\ndescription: "自动追踪指定领域每周热点论文并生成摘要"\nauthor: "eidosinsight-built-in"\ntags: ["trending", "weekly", "auto"]\ntrigger: "/trending-weekly"\ntools_required:\n  - paper.search\n  - paper.brief\nparameters:\n  - name: keyword\n    type: string\n    required: true\n    description: "追踪的关键词或领域"\n  - name: time_range\n    type: enum\n    options: ["week", "month"]\n    default: "week"\n---\n\n# 每周热点追踪\n\n## 步骤\n\n1. **搜索热点论文**\n   tool: paper.search\n   input:\n     query: "{{keyword}}"\n     sort: trending\n     time_range: "{{time_range}}"\n     limit: 10\n\n2. **批量生成TL;DR**\n   tool: paper.brief\n   input:\n     papers: "{{step1.results}}"',
    'builtin', '1.0.0', '/trending-weekly', 1);
+"#;
+
+// ── M014: Add file_type column to papers + crawl/watch tables ───────────────
+
+static M014_FILE_TYPE_AND_CRAWL: &str = r#"
+-- Add file_type column to papers table for multi-format support
+-- Legacy records (pdf_path only) default to 'pdf'
+ALTER TABLE papers ADD COLUMN file_type TEXT;
+
+-- Backfill existing records: anything with a pdf_path is a PDF
+UPDATE papers SET file_type = 'pdf' WHERE pdf_path IS NOT NULL AND file_type IS NULL;
+
+-- ── Watch directories ──────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS watch_dirs (
+    id                TEXT PRIMARY KEY,
+    path              TEXT NOT NULL,
+    is_enabled        INTEGER NOT NULL DEFAULT 1,
+    file_filter       TEXT,          -- comma-separated extensions, e.g. "pdf,txt,docx"
+    folder_id         TEXT,
+    recursive         INTEGER NOT NULL DEFAULT 1,
+    scan_interval_min INTEGER NOT NULL DEFAULT 60,
+    last_scan         TEXT,
+    created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (folder_id) REFERENCES folders(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_watch_dirs_enabled ON watch_dirs(is_enabled);
+
+-- ── File fingerprints (for incremental crawl change detection) ─────────────
+CREATE TABLE IF NOT EXISTS file_fingerprints (
+    id              TEXT PRIMARY KEY,
+    file_path       TEXT NOT NULL,
+    watch_dir_id    TEXT NOT NULL REFERENCES watch_dirs(id) ON DELETE CASCADE,
+    file_size       INTEGER NOT NULL DEFAULT 0,
+    modified_time   INTEGER NOT NULL DEFAULT 0,
+    content_hash    TEXT,
+    is_imported     INTEGER NOT NULL DEFAULT 0,
+    paper_id        TEXT,
+    discovered_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    last_checked    TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (paper_id) REFERENCES papers(id) ON DELETE SET NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_fingerprints_path ON file_fingerprints(file_path);
+CREATE INDEX IF NOT EXISTS idx_fingerprints_watch_dir ON file_fingerprints(watch_dir_id);
+CREATE INDEX IF NOT EXISTS idx_fingerprints_imported ON file_fingerprints(is_imported);
+"#;
+
+// ── M015: Collections, collection_papers, ai_results ───────────────────────
+
+static M015_COLLECTIONS_AND_AI_RESULTS: &str = r#"
+-- ── Collections (user-curated paper groups) ──────────────────────────────────
+CREATE TABLE IF NOT EXISTS collections (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    description TEXT,
+    color       TEXT,
+    icon        TEXT,
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ── Collection ↔ Paper (many-to-many) ───────────────────────────────────────
+CREATE TABLE IF NOT EXISTS collection_papers (
+    collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    paper_id      TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+    date_added    TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (collection_id, paper_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_coll_papers_collection ON collection_papers(collection_id);
+CREATE INDEX IF NOT EXISTS idx_coll_papers_paper ON collection_papers(paper_id);
+
+-- ── AI analysis results ─────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS ai_results (
+    id              TEXT PRIMARY KEY,
+    result_type     TEXT NOT NULL,          -- 'review' | 'comparison' | 'baseline'
+    collection_id   TEXT REFERENCES collections(id) ON DELETE SET NULL,
+    title           TEXT NOT NULL,
+    content         TEXT NOT NULL,           -- Markdown output
+    structured_data TEXT,                    -- JSON for frontend table rendering (baseline)
+    model_used      TEXT,                    -- e.g. 'llama3', 'gpt-4o'
+    paper_ids       TEXT NOT NULL,           -- JSON array of paper IDs
+    dimensions      TEXT,                    -- JSON array of comparison dimensions
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_results_type ON ai_results(result_type);
+CREATE INDEX IF NOT EXISTS idx_ai_results_collection ON ai_results(collection_id);
+"#;
+
+// ── M016: Remove default system folders (all/favorites/unread/recently-added) ──
+// These are now handled as UI-level filter views, not database records.
+
+static M016_REMOVE_DEFAULT_FOLDERS: &str = r#"
+-- Remove legacy system default folders that are now handled in the UI layer
+DELETE FROM folders WHERE id IN ('all', 'favorites', 'unread', 'recently-added');
 "#;

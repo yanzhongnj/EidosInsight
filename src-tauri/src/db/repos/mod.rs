@@ -8,6 +8,9 @@ mod reading_repo;
 mod settings_repo;
 mod task_repo;
 mod skill_repo;
+mod crawl_repo;
+mod collection_repo;
+mod ai_result_repo;
 
 pub use paper_repo::PaperRepo;
 pub use folder_repo::FolderRepo;
@@ -17,3 +20,6 @@ pub use reading_repo::ReadingRepo;
 pub use settings_repo::SettingsRepo;
 pub use task_repo::TaskRepo;
 pub use skill_repo::SkillRepo;
+pub use crawl_repo::CrawlRepo;
+pub use collection_repo::CollectionRepo;
+pub use ai_result_repo::AiResultRepo;

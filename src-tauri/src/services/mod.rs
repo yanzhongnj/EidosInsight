@@ -19,5 +19,7 @@ pub struct AppState {
 pub struct LlmState(pub Arc<LlmRouter>);
 
 pub mod pdf_service;
+pub mod document_parser;
+pub mod crawl_service;
 pub mod llm;
 pub mod scheduler;

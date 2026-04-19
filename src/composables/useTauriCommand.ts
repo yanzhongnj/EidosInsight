@@ -20,14 +20,24 @@ export function useTauriCommand() {
   const importPaper = (input: Record<string, unknown>) =>
     call<import('../types').Paper>('import_paper', { input })
 
-  const importPdf = () =>
-    call<import('../types').Paper>('import_pdf')
+  const importPdf = (folderId?: string | null) =>
+    call<import('../types').Paper>('import_pdf', { folderId: folderId ?? null })
 
-  const importPdfFromPath = (sourcePath: string) =>
-    call<import('../types').Paper>('import_pdf_from_path', { sourcePath })
+  const importPdfFromPath = (sourcePath: string, folderId?: string | null) =>
+    call<import('../types').Paper>('import_pdf_from_path', { sourcePath, folderId: folderId ?? null })
 
-  const batchImportPdfs = () =>
-    call<import('../types').Paper[]>('batch_import_pdfs')
+  const batchImportPdfs = (folderId?: string | null) =>
+    call<import('../types').Paper[]>('batch_import_pdfs', { folderId: folderId ?? null })
+
+  // Multi-format document import commands
+  const importDocument = (folderId?: string | null) =>
+    call<import('../types').Paper>('import_document', { folderId: folderId ?? null })
+
+  const importDocumentFromPath = (sourcePath: string, folderId?: string | null) =>
+    call<import('../types').Paper>('import_document_from_path', { sourcePath, folderId: folderId ?? null })
+
+  const batchImportDocuments = (folderId?: string | null) =>
+    call<import('../types').Paper[]>('batch_import_documents', { folderId: folderId ?? null })
 
   const getPaper = (id: string) =>
     call<import('../types').Paper>('get_paper', { id })
@@ -44,6 +54,12 @@ export function useTauriCommand() {
   const movePaperToFolder = (paperId: string, folderId: string | null) =>
     call<import('../types').Paper>('move_paper_to_folder', { paperId, folderId })
 
+  const getTagsForPaper = (paperId: string) =>
+    call<import('../types').Tag[]>('get_tags_for_paper', { paperId })
+
+  const batchGetPaperTags = (paperIds: string[]) =>
+    call<Record<string, import('../types').Tag[]>>('batch_get_paper_tags', { paperIds })
+
   const addPaperTag = (paperId: string, tagName: string) =>
     call<void>('add_paper_tag', { paperId, tagName })
 
@@ -52,6 +68,9 @@ export function useTauriCommand() {
 
   const readPdfFile = (paperId: string) =>
     call<string>('read_pdf_file', { paperId })
+
+  const readDocumentFile = (paperId: string) =>
+    call<string>('read_document_file', { paperId })
 
   // Search commands
   const searchPapers = (query: string, limit?: number) =>
@@ -77,6 +96,9 @@ export function useTauriCommand() {
     call<void>('delete_folder', { id })
 
   // Tag commands
+  const createTag = (name: string, color?: string | null) =>
+    call<import('../types').Tag>('create_tag', { name, color })
+
   const listTags = () =>
     call<import('../types').Tag[]>('list_tags')
 
@@ -85,6 +107,12 @@ export function useTauriCommand() {
 
   const deleteTag = (id: string) =>
     call<void>('delete_tag', { id })
+
+  const updateTagColor = (id: string, color: string) =>
+    call<void>('update_tag_color', { id, color })
+
+  const suggestTags = (paperId: string) =>
+    call<string[]>('suggest_tags', { paperId })
 
   // Note commands
   const createNote = (input: Record<string, unknown>) =>
@@ -163,6 +191,15 @@ export function useTauriCommand() {
     call<void>('load_sample_data')
 
   // LLM commands
+  const getLlmProviderPresets = () =>
+    call<import('../types').ProviderPreset[]>('get_llm_provider_presets')
+
+  const listConfiguredProviders = () =>
+    call<import('../types').ConfiguredProvider[]>('list_configured_providers')
+
+  const switchActiveProvider = (provider: string) =>
+    call<void>('switch_active_provider', { provider })
+
   const detectOllama = () =>
     call<import('../types').OllamaDetectionResult>('detect_ollama')
 
@@ -279,13 +316,97 @@ export function useTauriCommand() {
   const scheduleDescription = (schedule: string) =>
     call<string>('schedule_description', { schedule })
 
+  // Crawl / watch directory commands
+  const addWatchDir = (input: import('../types').CreateWatchDirInput) =>
+    call<import('../types').WatchDir>('add_watch_dir', { input })
+
+  const listWatchDirs = () =>
+    call<import('../types').WatchDir[]>('list_watch_dirs')
+
+  const updateWatchDir = (input: import('../types').UpdateWatchDirInput) =>
+    call<import('../types').WatchDir>('update_watch_dir', { input })
+
+  const deleteWatchDir = (id: string) =>
+    call<void>('delete_watch_dir', { id })
+
+  const scanWatchDir = (id: string) =>
+    call<import('../types').CrawlScanResult>('scan_watch_dir', { id })
+
+  const scanAllWatchDirs = () =>
+    call<import('../types').CrawlScanResult[]>('scan_all_watch_dirs')
+
+  const getCrawlStatus = () =>
+    call<import('../types').WatchDir[]>('get_crawl_status')
+
+  // Collection commands
+  const createCollection = (input: import('../types').CreateCollectionInput) =>
+    call<import('../types').Collection>('create_collection', { input })
+
+  const getCollection = (id: string) =>
+    call<import('../types').Collection>('get_collection', { id })
+
+  const listCollections = () =>
+    call<import('../types').Collection[]>('list_collections')
+
+  const updateCollection = (input: import('../types').UpdateCollectionInput) =>
+    call<import('../types').Collection>('update_collection', { input })
+
+  const deleteCollection = (id: string) =>
+    call<void>('delete_collection', { id })
+
+  const addPaperToCollection = (collectionId: string, paperId: string) =>
+    call<void>('add_paper_to_collection', { collectionId, paperId })
+
+  const removePaperFromCollection = (collectionId: string, paperId: string) =>
+    call<void>('remove_paper_from_collection', { collectionId, paperId })
+
+  const listCollectionPapers = (collectionId: string) =>
+    call<import('../types').Paper[]>('list_collection_papers', { collectionId })
+
+  const addPapersToCollection = (collectionId: string, paperIds: string[]) =>
+    call<number>('add_papers_to_collection', { collectionId, paperIds })
+
+  // AI result commands
+  const listAiResults = (resultType?: string) =>
+    call<import('../types').AiResult[]>('list_ai_results', { resultType })
+
+  const listCollectionAiResults = (collectionId: string) =>
+    call<import('../types').AiResult[]>('list_collection_ai_results', { collectionId })
+
+  const getAiResult = (id: string) =>
+    call<import('../types').AiResult>('get_ai_result', { id })
+
+  const deleteAiResult = (id: string) =>
+    call<void>('delete_ai_result', { id })
+
+  const generateReview = (input: import('../types').GenerateReviewInput) =>
+    call<import('../types').AiResult>('generate_review', { input })
+
+  const generateComparison = (input: import('../types').GenerateComparisonInput) =>
+    call<import('../types').AiResult>('generate_comparison', { input })
+
+  const generateBaseline = (input: import('../types').GenerateBaselineInput) =>
+    call<import('../types').AiResult>('generate_baseline', { input })
+
+  // Update commands
+  const checkForUpdates = () =>
+    call<import('../composables/useUpdater').UpdateCheckResult>('check_for_updates')
+
+  const getAppVersion = () =>
+    call<string>('get_app_version')
+
+  // Stats commands
+  const getLibraryStats = () =>
+    call<import('../types').LibraryStats>('get_library_stats')
+
   return {
     call,
-    importPaper, importPdf, importPdfFromPath, batchImportPdfs, getPaper, listPapers, updatePaper, deletePaper,
-    movePaperToFolder, addPaperTag, removePaperTag, readPdfFile,
+    importPaper, importPdf, importPdfFromPath, batchImportPdfs, importDocument, importDocumentFromPath, batchImportDocuments,
+    getPaper, listPapers, updatePaper, deletePaper,
+    movePaperToFolder, getTagsForPaper, batchGetPaperTags, addPaperTag, removePaperTag, readPdfFile, readDocumentFile,
     searchPapers, searchAdvanced, searchSuggest,
     createFolder, listFolders, updateFolder, deleteFolder,
-    listTags, renameTag, deleteTag,
+    listTags, renameTag, deleteTag, createTag, updateTagColor, suggestTags,
     createNote, getNote, listNotes, updateNote, deleteNote,
     createNoteLink, deleteNoteLink, getNoteWithLinks, listOutgoingLinks, listBacklinks,
     searchNotes, noteLinkSuggest,
@@ -294,9 +415,15 @@ export function useTauriCommand() {
     getSettings, updateSettings, getLlmConfig, updateLlmConfig, testLlmConnection,
     isFirstLaunch, completeOnboarding, loadSampleData,
     detectOllama, getLlmStatus, listLlmModels, llmComplete, llmChatStream, saveApiKey, removeApiKey, configureLlmProvider, aiWizardDemo,
+    getLlmProviderPresets, listConfiguredProviders, switchActiveProvider,
     getExtensionStatus, registerNativeHost, importFromBrowser,
     aiExplainTerm, aiSummarize, aiExtractInsights, aiCheckAvailability,
     listPresetTasks, listAutoTasks, enableTask, disableTask, updateTaskSchedule, updateTaskConfig, deleteTask, getTaskHistory, runTaskNow,
     listSkills, createSkill, importSkill, updateSkill, deleteSkill, invokeSkill, scheduleToCron, scheduleDescription,
+    addWatchDir, listWatchDirs, updateWatchDir, deleteWatchDir, scanWatchDir, scanAllWatchDirs, getCrawlStatus,
+    createCollection, getCollection, listCollections, updateCollection, deleteCollection,
+    addPaperToCollection, removePaperFromCollection, listCollectionPapers, addPapersToCollection,
+    listAiResults, listCollectionAiResults, getAiResult, deleteAiResult, generateReview, generateComparison, generateBaseline,
+    checkForUpdates, getAppVersion, getLibraryStats,
   }
 }

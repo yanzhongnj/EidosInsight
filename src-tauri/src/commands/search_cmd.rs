@@ -179,7 +179,7 @@ pub fn search_advanced(filters: SearchFilters, db: State<'_, DbState>) -> Result
     let sql = format!(
         "SELECT
             p.id, p.title, p.authors, p.abstract_text, p.publication_date, p.journal,
-            p.volume, p.issue, p.pages, p.doi, p.arxiv_id, p.pdf_url, p.pdf_path,
+            p.volume, p.issue, p.pages, p.doi, p.arxiv_id, p.pdf_url, p.pdf_path, p.file_type,
             p.folder_id, p.tldr, p.reading_status, p.is_favorite, p.date_added, p.date_modified, p.cover_image,
             bm25(papers_fts, 3.0, 2.0, 1.0, 1.0, 1.0) AS score,
             snippet(papers_fts, 2, '<mark>', '</mark>', '…', 30) AS abstract_snip,
@@ -202,8 +202,8 @@ pub fn search_advanced(filters: SearchFilters, db: State<'_, DbState>) -> Result
 
     let papers: Vec<SearchResultItem> = stmt
         .query_map(params![fts_query, limit, offset], |row| {
-            let abstract_snip: Option<String> = row.get(21)?;
-            let title_snip: Option<String> = row.get(22)?;
+            let abstract_snip: Option<String> = row.get(22)?;
+            let title_snip: Option<String> = row.get(23)?;
 
             // Build highlight: prefer abstract snippet, fall back to title snippet
             let highlight = abstract_snip.or(title_snip);
@@ -223,15 +223,16 @@ pub fn search_advanced(filters: SearchFilters, db: State<'_, DbState>) -> Result
                     arxiv_id: row.get(10)?,
                     pdf_url: row.get(11)?,
                     pdf_path: row.get(12)?,
-                    folder_id: row.get(13)?,
-                    tldr: row.get(14)?,
-                    reading_status: row.get(15)?,
-                    is_favorite: row.get::<_, i32>(16)? != 0,
-                    date_added: row.get(17)?,
-                    date_modified: row.get(18)?,
-                    cover_image: row.get(19)?,
+                    file_type: row.get(13)?,
+                    folder_id: row.get(14)?,
+                    tldr: row.get(15)?,
+                    reading_status: row.get(16)?,
+                    is_favorite: row.get::<_, i32>(17)? != 0,
+                    date_added: row.get(18)?,
+                    date_modified: row.get(19)?,
+                    cover_image: row.get(20)?,
                 },
-                score: row.get::<_, f64>(20)?,
+                score: row.get::<_, f64>(21)?,
                 highlight,
             })
         })?

@@ -13,13 +13,13 @@ impl PaperRepo {
 
         conn.execute(
             "INSERT INTO papers (id, title, authors, abstract_text, publication_date, journal,
-                volume, issue, pages, doi, arxiv_id, pdf_url, pdf_path, folder_id, date_added, date_modified)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?15)",
+                volume, issue, pages, doi, arxiv_id, pdf_url, pdf_path, file_type, folder_id, date_added, date_modified)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?16)",
             params![
                 id, input.title, input.authors, input.abstract_text,
                 input.publication_date, input.journal, input.volume, input.issue,
                 input.pages, input.doi, input.arxiv_id, input.pdf_url, input.pdf_path,
-                input.folder_id, now,
+                input.file_type, input.folder_id, now,
             ],
         )?;
 
@@ -29,7 +29,7 @@ impl PaperRepo {
     pub fn get_by_id(conn: &Connection, id: &str) -> Result<Paper> {
         let mut stmt = conn.prepare(
             "SELECT id, title, authors, abstract_text, publication_date, journal,
-                    volume, issue, pages, doi, arxiv_id, pdf_url, pdf_path,
+                    volume, issue, pages, doi, arxiv_id, pdf_url, pdf_path, file_type,
                     folder_id, tldr, reading_status, is_favorite, date_added, date_modified, cover_image
              FROM papers WHERE id = ?1"
         )?;
@@ -48,13 +48,14 @@ impl PaperRepo {
                 arxiv_id: row.get(10)?,
                 pdf_url: row.get(11)?,
                 pdf_path: row.get(12)?,
-                folder_id: row.get(13)?,
-                tldr: row.get(14)?,
-                reading_status: row.get(15)?,
-                is_favorite: row.get::<_, i32>(16)? != 0,
-                date_added: row.get(17)?,
-                date_modified: row.get(18)?,
-                cover_image: row.get(19)?,
+                file_type: row.get(13)?,
+                folder_id: row.get(14)?,
+                tldr: row.get(15)?,
+                reading_status: row.get(16)?,
+                is_favorite: row.get::<_, i32>(17)? != 0,
+                date_added: row.get(18)?,
+                date_modified: row.get(19)?,
+                cover_image: row.get(20)?,
             })
         }).map_err(|_| AppError::PaperNotFound { id: id.to_string() })?;
         Ok(paper)
@@ -63,7 +64,7 @@ impl PaperRepo {
     pub fn list(conn: &Connection, filter: &PaperFilter) -> Result<PaperListResult> {
         let mut sql = String::from(
             "SELECT id, title, authors, abstract_text, publication_date, journal,
-                    volume, issue, pages, doi, arxiv_id, pdf_url, pdf_path,
+                    volume, issue, pages, doi, arxiv_id, pdf_url, pdf_path, file_type,
                     folder_id, tldr, reading_status, is_favorite, date_added, date_modified, cover_image
              FROM papers WHERE 1=1"
         );
@@ -137,13 +138,14 @@ impl PaperRepo {
                 arxiv_id: row.get(10)?,
                 pdf_url: row.get(11)?,
                 pdf_path: row.get(12)?,
-                folder_id: row.get(13)?,
-                tldr: row.get(14)?,
-                reading_status: row.get(15)?,
-                is_favorite: row.get::<_, i32>(16)? != 0,
-                date_added: row.get(17)?,
-                date_modified: row.get(18)?,
-                cover_image: row.get(19)?,
+                file_type: row.get(13)?,
+                folder_id: row.get(14)?,
+                tldr: row.get(15)?,
+                reading_status: row.get(16)?,
+                is_favorite: row.get::<_, i32>(17)? != 0,
+                date_added: row.get(18)?,
+                date_modified: row.get(19)?,
+                cover_image: row.get(20)?,
             })
         })?.filter_map(|r| r.ok()).collect();
 
@@ -189,5 +191,41 @@ impl PaperRepo {
             return Err(AppError::PaperNotFound { id: id.to_string() });
         }
         Ok(())
+    }
+
+    /// Find a paper by its stored file path (used for dedup during crawl)
+    pub fn find_by_file_path(conn: &Connection, file_path: &str) -> Result<Option<Paper>> {
+        let mut stmt = conn.prepare(
+            "SELECT id, title, authors, abstract_text, publication_date, journal,
+                    volume, issue, pages, doi, arxiv_id, pdf_url, pdf_path, file_type,
+                    folder_id, tldr, reading_status, is_favorite, date_added, date_modified, cover_image
+             FROM papers WHERE pdf_path = ?1"
+        )?;
+        let result = stmt.query_row(params![file_path], |row| {
+            Ok(Paper {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                authors: row.get(2)?,
+                abstract_text: row.get(3)?,
+                publication_date: row.get(4)?,
+                journal: row.get(5)?,
+                volume: row.get(6)?,
+                issue: row.get(7)?,
+                pages: row.get(8)?,
+                doi: row.get(9)?,
+                arxiv_id: row.get(10)?,
+                pdf_url: row.get(11)?,
+                pdf_path: row.get(12)?,
+                file_type: row.get(13)?,
+                folder_id: row.get(14)?,
+                tldr: row.get(15)?,
+                reading_status: row.get(16)?,
+                is_favorite: row.get::<_, i32>(17)? != 0,
+                date_added: row.get(18)?,
+                date_modified: row.get(19)?,
+                cover_image: row.get(20)?,
+            })
+        }).ok();
+        Ok(result)
     }
 }

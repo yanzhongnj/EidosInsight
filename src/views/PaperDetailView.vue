@@ -2,15 +2,19 @@
 import { onMounted, ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePaperStore } from '../stores/paper'
+import { useAppStore } from '../stores/app'
 import { useNoteStore } from '../stores/note'
+import { useTauriCommand } from '../composables/useTauriCommand'
 import NoteEditor from '../components/note/NoteEditor.vue'
 import AiAssistPanel from '../components/ai/AiAssistPanel.vue'
-import type { Note, CreateNoteInput, UpdateNoteInput } from '../types'
+import type { Note, CreateNoteInput, UpdateNoteInput, Tag } from '../types'
 
 const route = useRoute()
 const router = useRouter()
 const paperStore = usePaperStore()
+const appStore = useAppStore()
 const noteStore = useNoteStore()
+const cmd = useTauriCommand()
 const showNoteEditor = ref(false)
 const editingNote = ref<Note | null>(null)
 const creatingNote = ref(false)
@@ -18,11 +22,74 @@ const creatingNote = ref(false)
 // AI panel toggle
 const showAiPanel = ref(false)
 
+// Tag editing state
+const tagInput = ref('')
+const showTagInput = ref(false)
+const tagSearchInput = ref<HTMLInputElement | null>(null)
+
 onMounted(async () => {
   const id = route.params.id as string
   await paperStore.fetchPaper(id)
+  await paperStore.loadPaperTags([id])
   await noteStore.fetchNotes(id)
 })
+
+// Paper tags
+const paperTags = computed<Tag[]>(() => {
+  const id = route.params.id as string
+  return paperStore.getPaperTags(id)
+})
+
+// Available tags (not yet on this paper), filtered by search
+const availableTags = computed(() => {
+  const selectedIds = new Set(paperTags.value.map(t => t.id))
+  let tags = appStore.tags.filter(t => !selectedIds.has(t.id))
+  if (tagInput.value.trim()) {
+    const q = tagInput.value.toLowerCase()
+    tags = tags.filter(t => t.name.toLowerCase().includes(q))
+  }
+  return tags.slice(0, 10)
+})
+
+function toggleTagInput() {
+  showTagInput.value = !showTagInput.value
+  if (showTagInput.value) {
+    tagInput.value = ''
+    setTimeout(() => tagSearchInput.value?.focus(), 50)
+  }
+}
+
+async function handleAddTag(tagName: string) {
+  const paperId = route.params.id as string
+  try {
+    await cmd.addPaperTag(paperId, tagName)
+    tagInput.value = ''
+    await paperStore.loadPaperTags([paperId])
+    await appStore.fetchTags()
+  } catch (e) {
+    console.error('Add tag failed:', e)
+  }
+}
+
+async function handleRemoveTag(tagId: string) {
+  const paperId = route.params.id as string
+  try {
+    await cmd.removePaperTag(paperId, tagId)
+    await paperStore.loadPaperTags([paperId])
+    await appStore.fetchTags()
+  } catch (e) {
+    console.error('Remove tag failed:', e)
+  }
+}
+
+function handleTagKeydown(e: KeyboardEvent) {
+  if (e.key === 'Enter' && tagInput.value.trim()) {
+    handleAddTag(tagInput.value.trim())
+  } else if (e.key === 'Escape') {
+    showTagInput.value = false
+    tagInput.value = ''
+  }
+}
 
 function startCreateNote() {
   editingNote.value = null
@@ -153,6 +220,62 @@ const currentPaper = computed(() => paperStore.currentPaper)
               <option value="reading">在读</option>
               <option value="read">已读</option>
             </select>
+          </div>
+        </div>
+
+        <!-- Tags -->
+        <div class="section tag-section">
+          <div class="section-header">
+            <h3>🏷️ 标签</h3>
+            <button class="btn btn-secondary btn-sm" @click="toggleTagInput">
+              {{ showTagInput ? '收起' : '+ 添加标签' }}
+            </button>
+          </div>
+
+          <div v-if="paperTags.length > 0 || showTagInput" class="tag-area">
+            <!-- Current tags -->
+            <div v-if="paperTags.length > 0" class="current-tags">
+              <span
+                v-for="tag in paperTags"
+                :key="tag.id"
+                class="tag-chip"
+                :style="tag.color ? { backgroundColor: `${tag.color}18`, borderColor: `${tag.color}40`, color: tag.color } : {}"
+              >
+                {{ tag.name }}
+                <button class="tag-remove-btn" @click="handleRemoveTag(tag.id)">×</button>
+              </span>
+            </div>
+            <div v-else class="no-tags-hint">暂无标签</div>
+
+            <!-- Add tag input -->
+            <div v-if="showTagInput" class="tag-add-area">
+              <input
+                ref="tagSearchInput"
+                v-model="tagInput"
+                class="tag-input"
+                placeholder="搜索或新建标签..."
+                @keydown="handleTagKeydown"
+              />
+              <div v-if="availableTags.length > 0" class="tag-dropdown">
+                <button
+                  v-for="tag in availableTags"
+                  :key="tag.id"
+                  class="tag-option"
+                  :style="tag.color ? { color: tag.color } : {}"
+                  @click="handleAddTag(tag.name)"
+                >
+                  {{ tag.name }}
+                  <span class="tag-usage-count">{{ tag.usage_count }}</span>
+                </button>
+              </div>
+              <button
+                v-if="tagInput.trim() && !appStore.tags.find(t => t.name === tagInput.trim())"
+                class="tag-option tag-create-option"
+                @click="handleAddTag(tagInput.trim())"
+              >
+                + 创建 "{{ tagInput.trim() }}"
+              </button>
+            </div>
           </div>
         </div>
 
@@ -567,4 +690,123 @@ const currentPaper = computed(() => paperStore.currentPaper)
 }
 
 .btn-primary:hover { background: var(--color-primary-hover); }
+
+/* ── Tags ── */
+.tag-section { margin-bottom: 24px; }
+
+.tag-area {
+  margin-top: 8px;
+}
+
+.current-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 8px 3px 10px;
+  border-radius: 9999px;
+  border: 1px solid var(--border-secondary);
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.tag-chip:hover {
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+.tag-remove-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  opacity: 0.4;
+  padding: 0 2px;
+  color: inherit;
+  line-height: 1;
+  transition: opacity 0.15s;
+}
+
+.tag-remove-btn:hover { opacity: 1; }
+
+.no-tags-hint {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  font-style: italic;
+  margin-bottom: 8px;
+}
+
+.tag-add-area {
+  position: relative;
+}
+
+.tag-input {
+  width: 100%;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-md);
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--text-primary);
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.tag-input:focus { border-color: var(--color-primary); }
+
+.tag-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  max-height: 160px;
+  overflow-y: auto;
+  z-index: 50;
+  margin-top: 2px;
+}
+
+.tag-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  background: none;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.tag-option:hover { background: var(--bg-tertiary); }
+
+.tag-usage-count {
+  font-size: 10px;
+  opacity: 0.4;
+}
+
+.tag-create-option {
+  color: var(--color-primary);
+  font-weight: 500;
+  margin-top: 2px;
+  border-top: 1px solid var(--border-primary);
+  padding-top: 8px;
+  width: 100%;
+}
 </style>

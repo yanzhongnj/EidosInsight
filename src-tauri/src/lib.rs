@@ -24,6 +24,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             // Initialize database
             let app_data_dir = app
@@ -102,9 +103,24 @@ pub fn run() {
             paper_cmd::update_paper,
             paper_cmd::delete_paper,
             paper_cmd::move_paper_to_folder,
+            paper_cmd::get_tags_for_paper,
+            paper_cmd::batch_get_paper_tags,
             paper_cmd::add_paper_tag,
             paper_cmd::remove_paper_tag,
             paper_cmd::read_pdf_file,
+            // Multi-format document import commands
+            import_cmd::import_document,
+            import_cmd::import_document_from_path,
+            import_cmd::batch_import_documents,
+            // Crawl / watch directory commands
+            crawl_cmd::add_watch_dir,
+            crawl_cmd::list_watch_dirs,
+            crawl_cmd::update_watch_dir,
+            crawl_cmd::delete_watch_dir,
+            crawl_cmd::scan_watch_dir,
+            crawl_cmd::scan_all_watch_dirs,
+            crawl_cmd::get_crawl_status,
+            crawl_cmd::read_document_file,
             // Search commands
             search_cmd::search_papers,
             search_cmd::search_fulltext,
@@ -116,9 +132,12 @@ pub fn run() {
             folder_cmd::update_folder,
             folder_cmd::delete_folder,
             // Tag commands
+            tag_cmd::create_tag,
             tag_cmd::list_tags,
             tag_cmd::rename_tag,
             tag_cmd::delete_tag,
+            tag_cmd::update_tag_color,
+            tag_cmd::suggest_tags,
             // Note commands
             note_cmd::create_note,
             note_cmd::get_note,
@@ -149,6 +168,9 @@ pub fn run() {
             onboarding_cmd::complete_onboarding,
             onboarding_cmd::load_sample_data,
             // LLM commands
+            llm_cmd::get_llm_provider_presets,
+            llm_cmd::list_configured_providers,
+            llm_cmd::switch_active_provider,
             llm_cmd::detect_ollama,
             llm_cmd::get_llm_status,
             llm_cmd::list_llm_models,
@@ -185,6 +207,29 @@ pub fn run() {
             automation_cmd::invoke_skill,
             automation_cmd::schedule_to_cron,
             automation_cmd::schedule_description,
+            // Collection commands
+            collection_cmd::create_collection,
+            collection_cmd::get_collection,
+            collection_cmd::list_collections,
+            collection_cmd::update_collection,
+            collection_cmd::delete_collection,
+            collection_cmd::add_paper_to_collection,
+            collection_cmd::remove_paper_from_collection,
+            collection_cmd::list_collection_papers,
+            collection_cmd::add_papers_to_collection,
+            // AI result commands
+            ai_result_cmd::list_ai_results,
+            ai_result_cmd::list_collection_ai_results,
+            ai_result_cmd::get_ai_result,
+            ai_result_cmd::delete_ai_result,
+            ai_result_cmd::generate_review,
+            ai_result_cmd::generate_comparison,
+            ai_result_cmd::generate_baseline,
+            // Update commands
+            update_cmd::check_for_updates,
+            update_cmd::get_app_version,
+            // Stats commands
+            stats_cmd::get_library_stats,
         ])
         .run(tauri::generate_context!())
         .expect("error while running EidosInsight");

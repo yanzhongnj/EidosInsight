@@ -2,7 +2,7 @@
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { AppSettings, LlmConfig, Folder, Tag, LlmStatusResult, LlmModelInfo } from '../types'
+import type { AppSettings, LlmConfig, Folder, Tag, LlmStatusResult, LlmModelInfo, LibraryStats } from '../types'
 import { useTauriCommand } from '../composables/useTauriCommand'
 
 export const useAppStore = defineStore('app', () => {
@@ -40,6 +40,7 @@ export const useAppStore = defineStore('app', () => {
   const llmStatus = ref<LlmStatusResult>({
     status: 'unavailable',
     has_cloud: false,
+    active_cloud_provider: null,
   })
   const llmModels = ref<LlmModelInfo[]>([])
   const llmStatusLoading = ref(false)
@@ -47,6 +48,10 @@ export const useAppStore = defineStore('app', () => {
   // Sidebar data
   const folders = ref<Folder[]>([])
   const tags = ref<Tag[]>([])
+  const selectedFolderId = ref<string | null>(null)
+
+  // Global library stats (independent of current filter)
+  const libraryStats = ref<LibraryStats | null>(null)
 
   const isDark = computed(() => {
     if (settings.value.theme === 'system') {
@@ -71,6 +76,8 @@ export const useAppStore = defineStore('app', () => {
       }
       // Check LLM status
       await refreshLlmStatus()
+      // Fetch global library stats
+      await fetchLibraryStats()
       initialized.value = true
     } catch (error) {
       console.error('Failed to initialize app:', error)
@@ -82,7 +89,7 @@ export const useAppStore = defineStore('app', () => {
     try {
       llmStatus.value = await cmd.getLlmStatus()
     } catch {
-      llmStatus.value = { status: 'unavailable', has_cloud: false }
+      llmStatus.value = { status: 'unavailable', has_cloud: false, active_cloud_provider: null }
     } finally {
       llmStatusLoading.value = false
     }
@@ -112,6 +119,14 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
+  async function fetchLibraryStats() {
+    try {
+      libraryStats.value = await cmd.getLibraryStats()
+    } catch (error) {
+      console.error('Failed to fetch library stats:', error)
+    }
+  }
+
   async function updateSettings(newSettings: AppSettings) {
     try {
       await cmd.updateSettings(newSettings as unknown as Record<string, unknown>)
@@ -129,7 +144,7 @@ export const useAppStore = defineStore('app', () => {
   return {
     initialized, isFirstLaunch, sidebarCollapsed, activeView,
     settings, llmConfig, llmStatus, llmModels, llmStatusLoading,
-    folders, tags, isDark, isLlmAvailable,
-    initialize, refreshLlmStatus, refreshLlmModels, fetchFolders, fetchTags, updateSettings, toggleSidebar,
+    folders, tags, selectedFolderId, libraryStats, isDark, isLlmAvailable,
+    initialize, refreshLlmStatus, refreshLlmModels, fetchFolders, fetchTags, fetchLibraryStats, updateSettings, toggleSidebar,
   }
 })

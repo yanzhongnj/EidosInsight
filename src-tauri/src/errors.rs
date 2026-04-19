@@ -32,6 +32,9 @@ pub enum AppError {
     #[error("PDF parse error: {0}")]
     PdfParse(String),
 
+    #[error("Document parse error: {0}")]
+    DocumentParse(String),
+
     #[error("LLM error: {0}")]
     Llm(String),
 

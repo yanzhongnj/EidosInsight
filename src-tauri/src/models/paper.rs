@@ -2,6 +2,63 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Supported document file types
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum FileType {
+    Pdf,
+    Txt,
+    Docx,
+    Xlsx,
+    Csv,
+    Html,
+}
+
+impl FileType {
+    /// Determine file type from extension
+    pub fn from_extension(ext: &str) -> Option<Self> {
+        match ext.to_lowercase().as_str() {
+            "pdf" => Some(Self::Pdf),
+            "txt" => Some(Self::Txt),
+            "docx" | "doc" => Some(Self::Docx),
+            "xlsx" | "xls" => Some(Self::Xlsx),
+            "csv" => Some(Self::Csv),
+            "html" | "htm" => Some(Self::Html),
+            _ => None,
+        }
+    }
+
+    /// Get the file extension for this type
+    pub fn as_extension(&self) -> &'static str {
+        match self {
+            Self::Pdf => "pdf",
+            Self::Txt => "txt",
+            Self::Docx => "docx",
+            Self::Xlsx => "xlsx",
+            Self::Csv => "csv",
+            Self::Html => "html",
+        }
+    }
+
+    /// Get all supported extensions for file dialogs
+    pub fn all_extensions() -> Vec<&'static str> {
+        vec!["pdf", "txt", "docx", "doc", "xlsx", "xls", "csv", "html", "htm"]
+    }
+}
+
+impl std::fmt::Display for FileType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Pdf => write!(f, "PDF"),
+            Self::Txt => write!(f, "TXT"),
+            Self::Docx => write!(f, "Word"),
+            Self::Xlsx => write!(f, "Excel"),
+            Self::Csv => write!(f, "CSV"),
+            Self::Html => write!(f, "HTML"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Paper {
     pub id: String,
@@ -16,7 +73,12 @@ pub struct Paper {
     pub doi: Option<String>,
     pub arxiv_id: Option<String>,
     pub pdf_url: Option<String>,
+    /// Path to the stored document file (relative to papers_dir).
+    /// Legacy field name retained for DB compatibility; renamed conceptually to file_path.
     pub pdf_path: Option<String>,
+    /// Document file type (pdf, txt, docx, xlsx, csv, html).
+    /// NULL for legacy records defaults to "pdf".
+    pub file_type: Option<String>,
     pub folder_id: Option<String>,
     pub tldr: Option<String>,
     pub reading_status: String, // "unread" | "reading" | "read"
@@ -39,7 +101,10 @@ pub struct CreatePaperInput {
     pub doi: Option<String>,
     pub arxiv_id: Option<String>,
     pub pdf_url: Option<String>,
+    /// Legacy field — stores the relative file path in papers_dir
     pub pdf_path: Option<String>,
+    /// Document file type string (e.g. "pdf", "txt", "docx")
+    pub file_type: Option<String>,
     pub folder_id: Option<String>,
 }
 

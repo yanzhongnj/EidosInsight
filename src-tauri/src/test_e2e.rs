@@ -50,6 +50,7 @@ fn create_test_paper(conn: &Connection, title: &str) -> Paper {
             arxiv_id: None,
             pdf_url: None,
             pdf_path: None,
+            file_type: None,
             folder_id: None,
         },
     )
@@ -1022,7 +1023,7 @@ fn test_full_user_journey() {
             journal: Some("CVPR".to_string()),
             volume: None, issue: None, pages: None,
             doi: None, arxiv_id: None,
-            pdf_url: None, pdf_path: None,
+            pdf_url: None, pdf_path: None, file_type: None,
             folder_id: None,
         },
     ).expect("Import paper 3");
@@ -1264,7 +1265,7 @@ fn test_paper_fts5_search() {
             abstract_text: Some("GPT-4 is a large multimodal model exhibiting human-level performance on various professional benchmarks.".to_string()),
             publication_date: Some("2023-03-15".to_string()),
             journal: None, volume: None, issue: None, pages: None,
-            doi: None, arxiv_id: None, pdf_url: None, pdf_path: None,
+            doi: None, arxiv_id: None, pdf_url: None, pdf_path: None, file_type: None,
             folder_id: None,
         },
     ).expect("Create GPT-4 paper");
@@ -1277,7 +1278,7 @@ fn test_paper_fts5_search() {
             abstract_text: Some("We introduce LLaMA, a collection of foundation language models ranging from 7B to 65B parameters.".to_string()),
             publication_date: Some("2023-02-27".to_string()),
             journal: None, volume: None, issue: None, pages: None,
-            doi: None, arxiv_id: None, pdf_url: None, pdf_path: None,
+            doi: None, arxiv_id: None, pdf_url: None, pdf_path: None, file_type: None,
             folder_id: None,
         },
     ).expect("Create LLaMA paper");
@@ -1290,7 +1291,7 @@ fn test_paper_fts5_search() {
             abstract_text: Some("We explore a method for training AI systems to be harmless through AI feedback.".to_string()),
             publication_date: Some("2022-12-07".to_string()),
             journal: None, volume: None, issue: None, pages: None,
-            doi: None, arxiv_id: None, pdf_url: None, pdf_path: None,
+            doi: None, arxiv_id: None, pdf_url: None, pdf_path: None, file_type: None,
             folder_id: None,
         },
     ).expect("Create CAI paper");
